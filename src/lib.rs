@@ -81,7 +81,7 @@ where
         let info = format!("{:?}", &req);
         println!("{}", info);
         if info.contains("Illegal") {
-            return Err(S::Error::from(Error::msg("Illegal instruction")));
+            return Err(S::Error::from(Error::msg("Illegal！")));
         }
         let resp = self.0.call(cx, req).await;
         tracing::debug!("Sent response {:?}", &resp);
