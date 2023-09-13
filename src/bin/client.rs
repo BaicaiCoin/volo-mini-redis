@@ -28,7 +28,7 @@ async fn main() {
         if string_vec[0] == "PING" {
             req = volo_gen::mini::redis::RedisRequest {
                 key: None,
-                value: Some(input.strip_prefix("PING ").unwrap().to_string().into()),
+                value: None,
                 request_type: volo_gen::mini::redis::RequestType::Ping,
             }
         }

@@ -17,7 +17,7 @@ impl volo_gen::mini::redis::RedisService for S {
         match req.request_type {
             volo_gen::mini::redis::RequestType::Ping => {
                 return Ok(volo_gen::mini::redis::RedisResponse {
-                    value: req.value,
+                    value: Some(format!("PONG").into()),
                     response_type: volo_gen::mini::redis::ResponseType::Value,
                 });
             }
