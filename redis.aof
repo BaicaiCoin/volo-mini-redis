@@ -1,0 +1,10 @@
+SET num_one 1
+
+SET num_two 2
+
+DEL num_two
+
+SET num_two 2
+
+DEL num_two
+

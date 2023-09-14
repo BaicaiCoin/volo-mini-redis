@@ -1,10 +1,11 @@
 #![feature(impl_trait_in_assoc_type)]
 
-use std::{sync::Mutex, collections::HashMap, process};
+use std::{sync::Mutex, collections::HashMap, process, io::Write};
 use anyhow::{Error, Ok};
 
 pub struct S {
     pub map: Mutex<HashMap<String, String>>,
+    pub aof_path: String,
 }
 
 #[volo::async_trait]
@@ -22,7 +23,10 @@ impl volo_gen::mini::redis::RedisService for S {
                 });
             }
             volo_gen::mini::redis::RequestType::Set => {
-                let _ = self.map.lock().unwrap().insert(req.key.unwrap().get(0).unwrap().to_string(), req.value.unwrap().to_string(),);
+                let _ = self.map.lock().unwrap().insert(req.clone().key.unwrap().get(0).unwrap().to_string(), req.clone().value.unwrap().to_string(),);
+                if let Err(err) = append_to_aof(&self, &req) {
+                    tracing::error!("Failed to append to AOF file: {:?}", err);
+                }
                 return Ok(volo_gen::mini::redis::RedisResponse {
                     value: Some(format!("\"OK\"",).into()),
                     response_type: volo_gen::mini::redis::ResponseType::Ok,
@@ -44,10 +48,13 @@ impl volo_gen::mini::redis::RedisService for S {
             }
             volo_gen::mini::redis::RequestType::Del => {
                 let mut count = 0;
-                for i in req.key.unwrap() {
+                for i in req.clone().key.unwrap() {
                     if let Some(_) = self.map.lock().unwrap().remove(&i.to_string()) {
                         count += 1;
                     }
+                }
+                if let Err(err) = append_to_aof(&self, &req) {
+                    tracing::error!("Failed to append to AOF file: {:?}", err);
                 }
                 return Ok(volo_gen::mini::redis::RedisResponse {
                     value: Some(format!("(integer) {}", count).into()),
@@ -61,6 +68,39 @@ impl volo_gen::mini::redis::RedisService for S {
         }
         Ok(Default::default())
     }
+}
+
+fn append_to_aof(s: &S, req: &volo_gen::mini::redis::RedisRequest) -> Result<(), std::io::Error> {
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&s.aof_path)?;
+    let operation_str = format_redis_operation(req);
+    file.write_all(operation_str.as_bytes())?;
+    file.write_all(b"\n")?;
+    std::result::Result::Ok(())
+}
+
+fn format_redis_operation(req: &volo_gen::mini::redis::RedisRequest) -> String {
+    match req.request_type {
+        volo_gen::mini::redis::RequestType::Set => {
+            if let Some(key) = &req.key {
+                if let Some(value) = &req.value {
+                    // 格式化SET操作为字符串，例如："SET key value"
+                    return format!("SET {} {}\n", key[0], value);
+                }
+            }
+        }
+        volo_gen::mini::redis::RequestType::Del => {
+            if let Some(key) = &req.key {
+                // 格式化DEL操作为字符串，例如："DEL key1 key2 key3"
+                return format!("DEL {}\n", key.join(" "));
+            }
+        }
+        _ => {}
+    }
+    // 默认返回空字符串
+    String::new()
 }
 
 #[derive(Clone)]
