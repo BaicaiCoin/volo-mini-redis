@@ -1859,9 +1859,9 @@ checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
 
 [[package]]
 name = "volo"
-version = "0.5.4"
+version = "0.5.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b9b1d97e8306647f3503362c462facba8bf1f4e6aafc9b74b18996e532e03eab"
+checksum = "0d4fcea6f3ec3afaf72af11044f85dc4f21fd8d75b80aa37ec7200bbd793dd16"
 dependencies = [
  "async-broadcast",
  "async-trait",
@@ -1929,9 +1929,9 @@ dependencies = [
 
 [[package]]
 name = "volo-thrift"
-version = "0.7.2"
+version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8b2a5e8327b3889efd4a1b6cf0f546e7e97f4ea04727979e4464826e2842e842"
+checksum = "6af5317dbef63af455e590edfccf22ea4f2e4f8c693f31c9ba594c430f90d842"
 dependencies = [
  "anyhow",
  "async-trait",

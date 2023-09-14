@@ -35,3 +35,7 @@ service RedisService {
 service RedisSync {
     RedisResponse SetSlave (1: RedisRequest req),
 }
+
+service RedisProxy {
+    RedisResponse SendReq (1: RedisRequest req),
+}
