@@ -1,12 +1,24 @@
 #![feature(impl_trait_in_assoc_type)]
 
-use std::{sync::Mutex, collections::HashMap, process, io::Write};
+use std::{sync::Mutex, collections::HashMap, process, io::Write, net::SocketAddr};
 use anyhow::{Error, Ok};
+use config::{Config, FileFormat};
+use serde::Deserialize;
 
 pub struct S {
     pub map: Mutex<HashMap<String, String>>,
     pub aof_path: String,
     pub is_main: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct RedisConfig {
+    slave_nodes: Vec<NodeConfig>,
+}
+
+#[derive(Debug, Deserialize)]
+struct NodeConfig {
+    address: SocketAddr,
 }
 
 #[volo::async_trait]
@@ -31,6 +43,7 @@ impl volo_gen::mini::redis::RedisService for S {
                 if let Err(err) = append_to_aof(&self, &req) {
                     tracing::error!("Failed to append to AOF file: {:?}", err);
                 }
+                let _ = send_to_slave(&req);
                 return Ok(volo_gen::mini::redis::RedisResponse {
                     value: Some(format!("\"OK\"",).into()),
                     response_type: volo_gen::mini::redis::ResponseType::Ok,
@@ -63,6 +76,7 @@ impl volo_gen::mini::redis::RedisService for S {
                 if let Err(err) = append_to_aof(&self, &req) {
                     tracing::error!("Failed to append to AOF file: {:?}", err);
                 }
+                let _ = send_to_slave(&req);
                 return Ok(volo_gen::mini::redis::RedisResponse {
                     value: Some(format!("(integer) {}", count).into()),
                     response_type: volo_gen::mini::redis::ResponseType::Value,
@@ -70,6 +84,39 @@ impl volo_gen::mini::redis::RedisService for S {
             }
             volo_gen::mini::redis::RequestType::Exit => {
                 process::exit(0);
+            }
+            _ => {}
+        }
+        Ok(Default::default())
+    }
+}
+
+#[volo::async_trait]
+impl volo_gen::mini::redis::RedisSync for S {
+    async fn set_slave(
+        &self,
+        req: volo_gen::mini::redis::RedisRequest,
+    ) -> ::core::result::Result<volo_gen::mini::redis::RedisResponse, ::volo_thrift::AnyhowError>
+    {
+        match req.request_type {
+            volo_gen::mini::redis::RequestType::Set => {
+                let _ = self.map.lock().unwrap().insert(req.clone().key.unwrap().get(0).unwrap().to_string(), req.clone().value.unwrap().to_string(),);
+                return Ok(volo_gen::mini::redis::RedisResponse {
+                    value: Some(format!("\"OK\"",).into()),
+                    response_type: volo_gen::mini::redis::ResponseType::Ok,
+                });
+            }
+            volo_gen::mini::redis::RequestType::Del => {
+                let mut count = 0;
+                for i in req.clone().key.unwrap() {
+                    if let Some(_) = self.map.lock().unwrap().remove(&i.to_string()) {
+                        count += 1;
+                    }
+                }
+                return Ok(volo_gen::mini::redis::RedisResponse {
+                    value: Some(format!("(integer) {}", count).into()),
+                    response_type: volo_gen::mini::redis::ResponseType::Value,
+                });
             }
             _ => {}
         }
@@ -108,6 +155,23 @@ fn format_redis_operation(req: &volo_gen::mini::redis::RedisRequest) -> String {
     }
     // 默认返回空字符串
     String::new()
+}
+
+fn send_to_slave(req: &volo_gen::mini::redis::RedisRequest) -> Result<(), std::io::Error> {
+    let mut settings = Config::new();
+    settings.merge(config::File::new("config", FileFormat::Toml).required(true)).unwrap();
+    let redis_config: RedisConfig = settings.try_into().unwrap();
+    let slave_nodes = redis_config.slave_nodes;
+    for slave_node in slave_nodes {
+        let slave: volo_gen::mini::redis::RedisSyncClient = {
+            let addr: SocketAddr = slave_node.address;
+            volo_gen::mini::redis::RedisSyncClientBuilder::new("send-to-slave-node")
+                .address(addr)
+                .build()
+        };
+        let _ = slave.set_slave(req.clone());
+    }
+    std::result::Result::Ok(())
 }
 
 #[derive(Clone)]

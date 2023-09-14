@@ -32,3 +32,6 @@ service RedisService {
     RedisResponse RedisCommand (1: RedisRequest req),
 }
 
+service RedisSync {
+    RedisResponse SetSlave (1: RedisRequest req),
+}
