@@ -1,0 +1,11 @@
+[main_node]
+address = "127.0.0.1:8080"
+is_main = true
+
+[[slave_nodes]]
+address = "127.0.0.1:8081"
+is_main = false
+
+[[slave_nodes]]
+address = "127.0.0.1:8082"
+is_main = false

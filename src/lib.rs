@@ -6,6 +6,7 @@ use anyhow::{Error, Ok};
 pub struct S {
     pub map: Mutex<HashMap<String, String>>,
     pub aof_path: String,
+    pub is_main: bool,
 }
 
 #[volo::async_trait]
@@ -23,6 +24,9 @@ impl volo_gen::mini::redis::RedisService for S {
                 });
             }
             volo_gen::mini::redis::RequestType::Set => {
+                if self.is_main == false {
+                    tracing::error!("Slave node can't SET!");
+                }
                 let _ = self.map.lock().unwrap().insert(req.clone().key.unwrap().get(0).unwrap().to_string(), req.clone().value.unwrap().to_string(),);
                 if let Err(err) = append_to_aof(&self, &req) {
                     tracing::error!("Failed to append to AOF file: {:?}", err);
@@ -47,6 +51,9 @@ impl volo_gen::mini::redis::RedisService for S {
                 }
             }
             volo_gen::mini::redis::RequestType::Del => {
+                if self.is_main == false {
+                    tracing::error!("Slave node can't DEL!");
+                }
                 let mut count = 0;
                 for i in req.clone().key.unwrap() {
                     if let Some(_) = self.map.lock().unwrap().remove(&i.to_string()) {

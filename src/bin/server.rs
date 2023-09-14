@@ -1,23 +1,64 @@
 #![feature(impl_trait_in_assoc_type)]
 
-use std::{net::SocketAddr, sync::Mutex, collections::HashMap};
-
+use std::{net::SocketAddr, sync::Mutex, collections::HashMap, vec::Vec};
+use config::{Config, FileFormat};
+use serde::Deserialize;
 use volo_mini_redis::S;
+use tokio::spawn;
+
+#[derive(Debug, Deserialize)]
+struct RedisConfig {
+    main_node: NodeConfig,
+    slave_nodes: Vec<NodeConfig>,
+}
+
+#[derive(Debug, Deserialize)]
+struct NodeConfig {
+    address: SocketAddr,
+    is_main: bool,
+}
+
+impl NodeConfig {
+    fn is_main(&self) -> bool {
+        self.is_main
+    }
+}
 
 #[volo::main]
 async fn main() {
-    let addr: SocketAddr = "[::]:8080".parse().unwrap();
-    let addr = volo::net::Address::from(addr);
+    let mut settings = Config::new();
+    settings.merge(config::File::new("config", FileFormat::Toml).required(true)).unwrap();
+    let redis_config: RedisConfig = settings.try_into().unwrap();
+    let main_node = redis_config.main_node;
+    let slave_nodes = redis_config.slave_nodes;
+    let mut vec = Vec::new();
+    vec.push(spawn(start_redis_node(main_node)));
+    for slave_node in slave_nodes {
+        vec.push(spawn(start_redis_node(slave_node)));
+    }
+    for element in vec {
+        element.await.unwrap();
+    }
+}
 
+async fn start_redis_node(config: NodeConfig) {
+    let addr = volo::net::Address::from(config.address);
     let aof_path = "redis.aof".to_string();
 
     let s = S {
         map: Mutex::new(HashMap::<String, String>::new()),
         aof_path: aof_path.clone(),
+        is_main: config.is_main(),
     };
 
     if let Err(err) = rebuild_data_from_aof(&s) {
         tracing::error!("Failed to rebuild data from AOF file: {:?}", err);
+    }
+
+    if config.is_main() {
+        println!("Main_node start! addr: {}", config.address);
+    } else {
+        println!("Slave_node start! addr: {}", config.address);
     }
 
     volo_gen::mini::redis::RedisServiceServer::new(s)
